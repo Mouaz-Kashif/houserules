@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HouseRules – make the unwritten rules visible</title>
+<meta name="description" content="A shared-apartment tool that helps new roommates discover, discuss and agree on household rules.">
+<style>
+:root{--bg:#e9eefc;--card:#fff;--ink:#14161f;--mute:#5d6377;--line:#14161f;--lime:#d3e87b;--vio:#b57bee;--ok:#2f9e63;--mid:#e0a526;--bad:#d4493f}
+@media(prefers-color-scheme:dark){:root{--bg:#12131a;--card:#1d1f2b;--ink:#f1f2f8;--mute:#9aa0b8;--line:#f1f2f8}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5}
+.wrap{max-width:860px;margin:0 auto;padding:20px 16px 80px}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:20px}
+h1{font-size:1.4rem;margin:0}h1 span{color:var(--vio)}
+nav{display:flex;gap:8px;flex-wrap:wrap}
+button,.btn{font:inherit;cursor:pointer;border:2px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:7px 16px;font-weight:600}
+button:hover{transform:translateY(-1px)}
+nav button.on,.primary{background:var(--lime);color:#14161f}
+.card{background:var(--card);border:2px solid var(--line);border-radius:20px;padding:20px;margin-bottom:14px}
+.hero h2{font-size:1.7rem;margin:.2em 0}
+.chip{display:inline-block;font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--vio)}
+.rule{font-size:1.1rem;font-weight:700;margin:.2em 0 .6em}
+.votes{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.v{font-size:.8rem;padding:2px 10px;border-radius:999px;border:1.5px solid var(--line)}
+.v.a{background:var(--ok);color:#fff;border-color:var(--ok)}.v.n{background:var(--mid);color:#14161f;border-color:var(--mid)}.v.d{background:var(--bad);color:#fff;border-color:var(--bad)}.v.x{opacity:.5;border-style:dashed}
+.choices{display:flex;gap:8px;flex-wrap:wrap}
+.choices button.sel{outline:3px solid var(--vio)}
+.bar{height:12px;border-radius:99px;background:var(--bg);border:2px solid var(--line);overflow:hidden}.bar i{display:block;height:100%;background:var(--lime)}
+.mute{color:var(--mute);font-size:.9rem}
+input,textarea,select{font:inherit;width:100%;padding:9px 14px;border:2px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink)}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1;min-width:140px}
+.tag{font-size:.75rem;padding:2px 8px;border-radius:8px;font-weight:700}
+.tag.ag{background:var(--ok);color:#fff}.tag.co{background:var(--bad);color:#fff}.tag.op{background:var(--mid);color:#14161f}.tag.st{background:var(--vio);color:#14161f}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:14px}
+.stats div{border:2px solid var(--line);border-radius:14px;padding:10px;text-align:center}.stats b{font-size:1.6rem;display:block}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.filters button{padding:4px 12px;font-size:.85rem}.filters button.on{background:var(--lime);color:#14161f}
+.charter li{margin:.5em 0}
+@media print{header,nav,.noprint,button{display:none!important}body{background:#fff;color:#000}.card{border:1px solid #000}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><h1>House<span>Rules</span></h1>
+<nav id="nav"></nav></header>
+<main id="app"></main>
+</div>
+<script>
+const CATS=["Noise","Guests","Cleaning","Kitchen & food","Money","Shared spaces"];
+const SEED_MEMBERS=["Lena","Tom","Aisha"];
+const R=(cat,text,l,t,a)=>({id:text,cat,text,votes:{Lena:l,Tom:t,Aisha:a},note:""});
+const SEED_RULES=[
+R("Noise","Quiet hours start at 22:00 on weekdays","a","n","a"),
+R("Noise","Headphones for TV/gaming after 23:00","a","a","a"),
+R("Guests","Overnight guests need a 24h heads-up in the group chat","a","d","n"),
+R("Guests","Parties need approval from every housemate","n","d","a"),
+R("Cleaning","Dishes are washed the same day, never left overnight","a","d","a"),
+R("Cleaning","Weekly cleaning rota, swap only by agreement","a","a","a"),
+R("Cleaning","Whoever fills the bin takes it out","a","a","n"),
+R("Kitchen & food","Labelled food is private, unlabelled is shared","n","a","d"),
+R("Kitchen & food","Basics (oil, salt, spices) are bought and shared by all","d","n","a"),
+R("Money","Rent and bills are paid by the 1st via the shared account","a","a","a"),
+R("Money","Shared supplies (toilet paper, soap) are split evenly via an app","n","a","a"),
+R("Shared spaces","Shoes off at the door","a","n","a"),
+R("Shared spaces","Bathroom limit of 20 minutes at peak morning time","d","n","n"),
+R("Shared spaces","Heating max 21°C, window tilted only briefly to air","a","d","n")];
+const LABEL={a:"Agree",n:"Depends",d:"Disagree"};
+let S=JSON.parse(localStorage.getItem("hr")||"null");
+let view="home",filter="All";
+function save(){try{localStorage.setItem("hr",JSON.stringify(S))}catch(e){}}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function status(r){
+ if(r.note)return"st";
+ if(S.members.some(m=>!r.votes[m]))return"op";
+ return S.members.every(m=>r.votes[m]==="a")?"ag":"co"}
+const TAGTXT={ag:"Agreed",co:"Contested",op:"Waiting for votes",st:"Settled"};
+function init(){
+ if(!S){const name=(prompt("Welcome! What's your name? (You're the new roommate)")||"You").trim().slice(0,20)||"You";
+  S={me:name,members:[...SEED_MEMBERS,name],rules:JSON.parse(JSON.stringify(SEED_RULES))};save()}
+ render()}
+function vote(id,v){S.rules.find(r=>r.id===id).votes[S.me]=v;save();render()}
+function setNote(id){const t=document.getElementById("n-"+id).value.trim();S.rules.find(r=>r.id===id).note=t;save();render()}
+function addRule(){const t=document.getElementById("nt").value.trim(),c=document.getElementById("nc").value;
+ if(!t)return;S.rules.push({id:"u"+Date.now(),cat:c,text:t,votes:{[S.me]:"a"},note:""});save();render()}
+function reset(){if(confirm("Reset everything and start over?")){localStorage.removeItem("hr");S=null;view="home";init()}}
+function go(v){view=v;render();scrollTo(0,0)}
+function votesHtml(r,hide){return`<div class="votes">`+S.members.map(m=>{
+ const val=r.votes[m];const shown=hide&&m!==S.me;
+ return`<span class="v ${shown?"x":val||"x"}">${esc(m)}: ${shown?"?":val?LABEL[val]:"no vote"}</span>`}).join("")+`</div>`}
+function choices(r){const mine=r.votes[S.me];
+ return`<div class="choices noprint">`+["a","n","d"].map(k=>`<button class="${mine===k?"sel":""}" onclick="vote('${r.id.replace(/'/g,"\\'")}','${k}')">${{a:"👍 Agree",n:"🤷 Depends",d:"👎 Disagree"}[k]}</button>`).join("")+`</div>`}
+function render(){
+ const tabs=[["home","Start"],["rules","All rules"],["conflicts","Conflicts"],["charter","House charter"]];
+ document.getElementById("nav").innerHTML=tabs.map(([k,l])=>`<button class="${view===k?"on":""}" onclick="go('${k}')">${l}</button>`).join("");
+ const answered=S.rules.filter(r=>r.votes[S.me]).length,total=S.rules.length;
+ const cnt={ag:0,co:0,op:0,st:0};S.rules.forEach(r=>cnt[status(r)]++);
+ let h="";
+ if(view==="home"){
+  h=`<div class="card hero"><span class="chip">Welcome, ${esc(S.me)}</span>
+  <h2>Every flat has rules. Few of them are written down.</h2>
+  <p>HouseRules helps a new roommate learn the unwritten rules <b>and</b> shows where the household doesn't actually agree, so it can be sorted out openly instead of through passive-aggressive notes.</p>
+  <div class="bar"><i style="width:${answered/total*100}%"></i></div>
+  <p class="mute">You've answered ${answered} of ${total} rules.</p>
+  <button class="primary" onclick="go('rules')">${answered?"Continue voting":"Start the rule check"}</button></div>
+  <div class="card"><b>How it works</b><ol>
+  <li><b>Discover:</b> go through the household's rules and say Agree, Depends or Disagree.</li>
+  <li><b>Compare:</b> see where housemates differ. Contested rules get flagged automatically.</li>
+  <li><b>Agree:</b> write a compromise for each contested rule in the Conflicts tab.</li>
+  <li><b>Publish:</b> the House charter lists every agreed rule, ready to print for the fridge.</li></ol>
+  <div class="stats"><div><b>${cnt.ag}</b>agreed</div><div><b>${cnt.co}</b>contested</div><div><b>${cnt.op}</b>waiting</div><div><b>${cnt.st}</b>settled</div></div></div>
+  <p class="mute">Demo data: Lena, Tom and Aisha are pre-filled housemates. Data is stored in your browser only.</p>`}
+ if(view==="rules"){
+  const list=S.rules.filter(r=>filter==="All"||r.cat===filter);
+  h=`<div class="filters">`+["All",...CATS].map(c=>`<button class="${filter===c?"on":""}" onclick="filter='${c}';render()">${c}</button>`).join("")+`</div>`+
+  list.map(r=>`<div class="card"><span class="chip">${r.cat}</span> <span class="tag ${status(r)}">${TAGTXT[status(r)]}</span>
+  <div class="rule">${esc(r.text)}</div>${r.votes[S.me]?votesHtml(r,false):`<p class="mute">Vote to see what your housemates think.</p>`+votesHtml(r,true)}${choices(r)}</div>`).join("")+
+  `<div class="card noprint"><b>Missing a rule? Add one</b><div class="row" style="margin-top:8px"><input id="nt" placeholder="e.g. No cooking fish after 21:00"><select id="nc">${CATS.map(c=>`<option>${c}</option>`).join("")}</select></div><p><button class="primary" onclick="addRule()">Add rule</button></p></div>`}
+ if(view==="conflicts"){
+  const list=S.rules.filter(r=>["co","st"].includes(status(r)));
+  h=`<div class="card"><b>${cnt.co} rule${cnt.co===1?"":"s"} to discuss</b><p class="mute">These are the rules the household doesn't agree on. Agree on a compromise and write it down; it moves into the charter.</p></div>`+
+  (list.length?list.map(r=>`<div class="card"><span class="chip">${r.cat}</span> <span class="tag ${status(r)}">${TAGTXT[status(r)]}</span>
+  <div class="rule">${esc(r.text)}</div>${votesHtml(r,false)}
+  <p class="mute">Talking point: ${S.members.filter(m=>r.votes[m]==="d").map(esc).join(", ")||"nobody strictly disagrees"} disagree${S.members.filter(m=>r.votes[m]==="d").length===1?"s":""}; ${S.members.filter(m=>r.votes[m]==="n").map(esc).join(", ")||"nobody"} said it depends. Ask what exceptions would make it work.</p>
+  <textarea id="n-${r.id.replace(/"/g,"")}" rows="2" placeholder="Agreed compromise (e.g. Quiet at 22:00 Sun–Thu, 00:00 Fri–Sat)">${esc(r.note)}</textarea>
+  <p><button class="primary" onclick="setNote('${r.id.replace(/'/g,"\\'")}')">Save compromise</button></p></div>`).join(""):`<div class="card">No conflicts. Everyone agrees. 🎉</div>`)}
+ if(view==="charter"){
+  const list=S.rules.filter(r=>["ag","st"].includes(status(r)));
+  h=`<div class="card"><h2 style="margin-top:0">Our house charter</h2><p class="mute">Housemates: ${S.members.map(esc).join(", ")}</p>`+
+  (list.length?CATS.map(c=>{const rs=list.filter(r=>r.cat===c);return rs.length?`<h3>${c}</h3><ul class="charter">${rs.map(r=>`<li>${esc(r.note||r.text)}</li>`).join("")}</ul>`:""}).join(""):`<p>No agreed rules yet.</p>`)+
+  `<p class="noprint"><button class="primary" onclick="print()">Print / save as PDF</button></p></div>
+  <p class="mute noprint">${cnt.co+cnt.op} rule(s) are still open and not included.</p>
+  <p class="noprint"><button onclick="reset()">Reset demo</button></p>`}
+ document.getElementById("app").innerHTML=h}
+init();
+</script>
+</body>
+</html>
